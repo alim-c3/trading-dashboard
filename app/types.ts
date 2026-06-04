@@ -2,16 +2,17 @@ export type TradeDirection = "LONG" | "SHORT";
 export type TradeStatus = "OPEN" | "CLOSED";
 export type LessonCategory = "Risk Management" | "Entry" | "Exit" | "Psychology" | "Setup" | "Other";
 export type LessonSeverity = "critical" | "warning" | "insight";
+export type Mood = "great" | "good" | "neutral" | "bad" | "terrible";
 
 export interface Trade {
   id: string;
-  date: string;          // ISO date string YYYY-MM-DD
+  date: string;
   ticker: string;
   direction: TradeDirection;
   entryPrice: number;
   exitPrice: number | null;
   shares: number;
-  commission: number;    // total commission paid
+  commission: number;
   status: TradeStatus;
   notes: string;
   setup: string;
@@ -29,10 +30,15 @@ export interface Lesson {
   createdAt: string;
 }
 
-export interface DailyStats {
+export interface JournalEntry {
+  id: string;
   date: string;
-  pnl: number;
-  trades: number;
-  wins: number;
-  losses: number;
+  premarketPlan: string;
+  watchlist: string;
+  maxLossTarget: number;
+  postmarketReview: string;
+  mood: Mood;
+  focusLevel: number; // 1–5
+  createdAt: string;
+  updatedAt: string;
 }
