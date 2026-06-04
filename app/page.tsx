@@ -165,7 +165,7 @@ function matchPairs(opens: RawRow[], closes: RawRow[], dir: "LONG"|"SHORT", date
   return trades;
 }
 
-export function importSchwebCSV(text: string): { trades: Trade[]; errors: string[] } {
+function importSchwebCSV(text: string): { trades: Trade[]; errors: string[] } {
   const errors: string[] = [];
   const lines = text.replace(/^﻿/, "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const hi = lines.findIndex(l => /date/i.test(l) && /action/i.test(l) && /symbol/i.test(l));
@@ -237,7 +237,7 @@ export function importSchwebCSV(text: string): { trades: Trade[]; errors: string
   return { trades, errors };
 }
 
-export function exportToCSV(trades: Trade[]) {
+function exportToCSV(trades: Trade[]) {
   const headers = ["Date","EntryTime","ExitTime","Duration","Ticker","Direction","Entry","Exit","Shares","Commission","P&L","Setup","Notes","Status"];
   const rows = trades.map(t => [
     t.date, t.entryTime ?? "", t.exitTime ?? "", tradeDuration(t) ?? "",
