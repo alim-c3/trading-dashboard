@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
-import { format, isToday, parseISO } from "date-fns";
+import { format, parseISO, startOfWeek, startOfMonth, startOfYear } from "date-fns";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Cell,
@@ -74,19 +74,56 @@ const SEED_TRADES: Trade[] = [
 ];
 
 const SEVERITY_CONFIG: Record<LessonSeverity, { color: string; bg: string; icon: JSX.Element; label: string }> = {
-  critical:  { color: "text-red-400",    bg: "bg-red-400/10 border-red-400/30",    icon: <AlertTriangle size={14} />, label: "Mistake" },
-  warning:   { color: "text-yellow-400", bg: "bg-yellow-400/10 border-yellow-400/30", icon: <Target size={14} />,       label: "Watch Out" },
-  insight:   { color: "text-indigo-400", bg: "bg-indigo-400/10 border-indigo-400/30", icon: <Lightbulb size={14} />,    label: "Insight" },
+  critical: { color: "text-red-400", bg: "bg-red-400/10 border-red-400/30", icon: <AlertTriangle size={14} />, label: "Mistake" },
+  warning: { color: "text-yellow-400", bg: "bg-yellow-400/10 border-yellow-400/30", icon: <Target size={14} />, label: "Watch Out" },
+  insight: { color: "text-indigo-400", bg: "bg-indigo-400/10 border-indigo-400/30", icon: <Lightbulb size={14} />, label: "Insight" },
 };
 
 const CATEGORY_COLORS: Record<LessonCategory, string> = {
   "Risk Management": "#6366f1",
-  "Entry":           "#06b6d4",
-  "Exit":            "#10b981",
-  "Psychology":      "#f59e0b",
-  "Setup":           "#8b5cf6",
-  "Other":           "#6b7280",
+  "Entry": "#06b6d4",
+  "Exit": "#10b981",
+  "Psychology": "#f59e0b",
+  "Setup": "#8b5cf6",
+  "Other": "#6b7280",
 };
+
+// ─── Period P&L Strip ────────────────────────────────────────────────────────
+function PeriodStrip({ periods }: {
+  periods: { label: string; pnl: number; count: number; winRate: number | null }[];
+}) {
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900 overflow-hidden">
+      <div className="px-5 pt-4 pb-2">
+        <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-500">P&amp;L by Period</h3>
+      </div>
+      <div className="grid grid-cols-5 divide-x divide-gray-800">
+        {periods.map((p, i) => {
+          const isPos = p.pnl >= 0;
+          const isEmpty = p.count === 0;
+          return (
+            <div key={p.label} className={`px-4 py-4 flex flex-col gap-1 ${i === 0 ? "bg-gray-800/40" : ""}`}>
+              <span className="text-[10px] font-semibold tracking-widest uppercase text-gray-500">{p.label}</span>
+              <span className={`text-lg font-bold font-mono leading-tight ${isEmpty ? "text-gray-600" : isPos ? "text-emerald-400" : "text-red-400"}`}>
+                {isEmpty ? "—" : fmt(p.pnl)}
+              </span>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-xs text-gray-600">
+                  {p.count === 0 ? "No trades" : `${p.count} trade${p.count !== 1 ? "s" : ""}`}
+                </span>
+                {p.winRate !== null && p.count > 0 && (
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${p.winRate >= 50 ? "bg-emerald-400/10 text-emerald-400" : "bg-red-400/10 text-red-400"}`}>
+                    {p.winRate.toFixed(0)}%W
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
 function StatCard({
@@ -96,7 +133,7 @@ function StatCard({
   icon: React.ReactNode; positive?: boolean; neutral?: boolean;
 }) {
   const color = neutral ? "text-gray-300" : positive ? "text-emerald-400" : "text-red-400";
-  const glow  = neutral ? "" : positive ? "glow-green" : "glow-red";
+  const glow = neutral ? "" : positive ? "glow-green" : "glow-red";
   return (
     <div className={`rounded-xl p-5 border border-gray-800 bg-gray-900 ${glow}`}>
       <div className="flex items-center justify-between mb-3">
@@ -111,8 +148,8 @@ function StatCard({
 
 // ─── Trade Row ───────────────────────────────────────────────────────────────
 function TradeRow({ trade, onDelete }: { trade: Trade; onDelete: (id: string) => void }) {
-  const pnl    = tradePnl(trade);
-  const isPos  = pnl >= 0;
+  const pnl = tradePnl(trade);
+  const isPos = pnl >= 0;
   const pnlPct = trade.exitPrice
     ? ((trade.exitPrice - trade.entryPrice) / trade.entryPrice) * 100 * (trade.direction === "SHORT" ? -1 : 1)
     : null;
@@ -171,15 +208,14 @@ function LessonCard({ lesson, onDelete }: { lesson: Lesson; onDelete: (id: strin
 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const [trades,  setTrades]  = useState<Trade[]>([]);
+  const [trades, setTrades] = useState<Trade[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [tab, setTab]         = useState<"trades" | "lessons" | "analytics">("trades");
-  const [showTradeForm,  setShowTradeForm]  = useState(false);
+  const [tab, setTab] = useState<"trades" | "lessons" | "analytics">("trades");
+  const [showTradeForm, setShowTradeForm] = useState(false);
   const [showLessonForm, setShowLessonForm] = useState(false);
   const [filterDate, setFilterDate] = useState("");
   const [lessonFilter, setLessonFilter] = useState<LessonSeverity | "all">("all");
 
-  // Persist — seed with real trades on first load
   useEffect(() => {
     const t = localStorage.getItem("trades");
     const l = localStorage.getItem("lessons");
@@ -192,42 +228,60 @@ export default function Dashboard() {
     if (l) setLessons(JSON.parse(l));
   }, []);
 
-  const saveTrades  = useCallback((t: Trade[])  => { setTrades(t);  localStorage.setItem("trades",  JSON.stringify(t)); }, []);
+  const saveTrades = useCallback((t: Trade[]) => { setTrades(t); localStorage.setItem("trades", JSON.stringify(t)); }, []);
   const saveLessons = useCallback((l: Lesson[]) => { setLessons(l); localStorage.setItem("lessons", JSON.stringify(l)); }, []);
 
   // ─── Computed stats ──────────────────────────────────────────────────────
   const closedTrades = trades.filter(t => t.status === "CLOSED");
-  const allPnl       = closedTrades.reduce((s, t) => s + tradePnl(t), 0);
-  const wins         = closedTrades.filter(t => tradePnl(t) > 0);
-  const losses       = closedTrades.filter(t => tradePnl(t) < 0);
-  const winRate      = closedTrades.length ? (wins.length / closedTrades.length) * 100 : 0;
-  const avgWin       = wins.length  ? wins.reduce((s, t) => s + tradePnl(t), 0)   / wins.length   : 0;
-  const avgLoss      = losses.length? losses.reduce((s, t) => s + tradePnl(t), 0) / losses.length : 0;
+  const allPnl = closedTrades.reduce((s, t) => s + tradePnl(t), 0);
+  const wins = closedTrades.filter(t => tradePnl(t) > 0);
+  const losses = closedTrades.filter(t => tradePnl(t) < 0);
+  const winRate = closedTrades.length ? (wins.length / closedTrades.length) * 100 : 0;
+  const avgWin = wins.length ? wins.reduce((s, t) => s + tradePnl(t), 0) / wins.length : 0;
+  const avgLoss = losses.length ? losses.reduce((s, t) => s + tradePnl(t), 0) / losses.length : 0;
   const profitFactor = Math.abs(avgLoss) > 0 ? avgWin / Math.abs(avgLoss) : 0;
 
   const today = new Date().toISOString().slice(0, 10);
   const todayTrades = trades.filter(t => t.date === today && t.status === "CLOSED");
-  const dailyPnl    = todayTrades.reduce((s, t) => s + tradePnl(t), 0);
+  const dailyPnl = todayTrades.reduce((s, t) => s + tradePnl(t), 0);
 
-  // Equity curve
+  // ─── Period P&L ──────────────────────────────────────────────────────────
+  const now = new Date();
+  const weekStartStr = startOfWeek(now, { weekStartsOn: 1 }).toISOString().slice(0, 10);
+  const monthStartStr = startOfMonth(now).toISOString().slice(0, 10);
+  const yearStartStr = startOfYear(now).toISOString().slice(0, 10);
+
+  function periodStats(startStr: string, endStr: string = today) {
+    const ts = closedTrades.filter(t => t.date >= startStr && t.date <= endStr);
+    const pnl = ts.reduce((s, t) => s + tradePnl(t), 0);
+    const w = ts.filter(t => tradePnl(t) > 0).length;
+    return { pnl, count: ts.length, winRate: ts.length > 0 ? (w / ts.length) * 100 : null };
+  }
+
+  const periods = [
+    { label: "Today", ...periodStats(today) },
+    { label: "This Week", ...periodStats(weekStartStr) },
+    { label: "This Month", ...periodStats(monthStartStr) },
+    { label: "YTD", ...periodStats(yearStartStr) },
+    { label: "All Time", ...periodStats("2000-01-01") },
+  ];
+
+  // ─── Charts data ─────────────────────────────────────────────────────────
   const equityCurve = (() => {
     const sorted = [...closedTrades].sort((a, b) => a.date.localeCompare(b.date));
     let cum = 0;
     return sorted.map(t => ({ date: format(parseISO(t.date), "MM/dd"), pnl: tradePnl(t), cum: (cum += tradePnl(t)) }));
   })();
 
-  // Daily bars
   const dailyMap: Record<string, number> = {};
   closedTrades.forEach(t => { dailyMap[t.date] = (dailyMap[t.date] || 0) + tradePnl(t); });
   const dailyBars = Object.entries(dailyMap)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, pnl]) => ({ date: format(parseISO(date), "MM/dd"), pnl }));
 
-  // Category breakdown for lessons
   const catCount: Partial<Record<LessonCategory, number>> = {};
   lessons.forEach(l => { catCount[l.category] = (catCount[l.category] || 0) + 1; });
 
-  // ─── Filtered trades ─────────────────────────────────────────────────────
   const displayTrades = filterDate
     ? trades.filter(t => t.date === filterDate)
     : [...trades].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 50);
@@ -313,6 +367,9 @@ export default function Dashboard() {
           />
         </div>
 
+        {/* Period P&L Strip */}
+        <PeriodStrip periods={periods} />
+
         {/* Equity Curve */}
         {equityCurve.length > 1 && (
           <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
@@ -321,7 +378,7 @@ export default function Dashboard() {
               <AreaChart data={equityCurve}>
                 <defs>
                   <linearGradient id="pnlGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor={allPnl >= 0 ? "#10b981" : "#ef4444"} stopOpacity={0.3} />
+                    <stop offset="5%" stopColor={allPnl >= 0 ? "#10b981" : "#ef4444"} stopOpacity={0.3} />
                     <stop offset="95%" stopColor={allPnl >= 0 ? "#10b981" : "#ef4444"} stopOpacity={0} />
                   </linearGradient>
                 </defs>
@@ -344,8 +401,8 @@ export default function Dashboard() {
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-2 text-sm font-semibold capitalize transition-colors border-b-2 -mb-px ${tab === t ? "border-indigo-500 text-white" : "border-transparent text-gray-500 hover:text-gray-300"}`}>
               {t === "lessons" ? "Lessons Learned" : t.charAt(0).toUpperCase() + t.slice(1)}
-              {t === "trades"  && trades.length   > 0 && <span className="ml-2 text-xs bg-gray-800 px-1.5 py-0.5 rounded-full text-gray-400">{trades.length}</span>}
-              {t === "lessons" && lessons.length  > 0 && <span className="ml-2 text-xs bg-gray-800 px-1.5 py-0.5 rounded-full text-gray-400">{lessons.length}</span>}
+              {t === "trades" && trades.length > 0 && <span className="ml-2 text-xs bg-gray-800 px-1.5 py-0.5 rounded-full text-gray-400">{trades.length}</span>}
+              {t === "lessons" && lessons.length > 0 && <span className="ml-2 text-xs bg-gray-800 px-1.5 py-0.5 rounded-full text-gray-400">{lessons.length}</span>}
             </button>
           ))}
         </div>
@@ -363,8 +420,8 @@ export default function Dashboard() {
               )}
               {filterDate && (
                 <span className="text-xs text-gray-500">
-                  Day P&L: <span className={`font-mono font-bold ${displayTrades.filter(t=>t.status==="CLOSED").reduce((s,t)=>s+tradePnl(t),0)>=0?"text-emerald-400":"text-red-400"}`}>
-                    {fmt(displayTrades.filter(t=>t.status==="CLOSED").reduce((s,t)=>s+tradePnl(t),0))}
+                  Day P&L: <span className={`font-mono font-bold ${displayTrades.filter(t => t.status === "CLOSED").reduce((s, t) => s + tradePnl(t), 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    {fmt(displayTrades.filter(t => t.status === "CLOSED").reduce((s, t) => s + tradePnl(t), 0))}
                   </span>
                 </span>
               )}
@@ -403,7 +460,6 @@ export default function Dashboard() {
             ) : (
               <>
                 <div className="grid md:grid-cols-2 gap-6">
-                  {/* Daily P&L bars */}
                   <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
                     <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-4">Daily P&L</h3>
                     <ResponsiveContainer width="100%" height={200}>
@@ -413,28 +469,27 @@ export default function Dashboard() {
                         <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
                         <Tooltip contentStyle={{ background: "#111827", border: "1px solid #374151", borderRadius: 8, color: "#f9fafb", fontSize: 12 }}
                           formatter={(v: number) => [fmt(v), "P&L"]} />
-                        <Bar dataKey="pnl" radius={[4,4,0,0]}>
+                        <Bar dataKey="pnl" radius={[4, 4, 0, 0]}>
                           {dailyBars.map((entry, i) => <Cell key={i} fill={entry.pnl >= 0 ? "#10b981" : "#ef4444"} fillOpacity={0.85} />)}
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
 
-                  {/* Per-trade scatter */}
                   <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
                     <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-4">P&L per Trade</h3>
                     <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                      {[...closedTrades].sort((a,b)=>tradePnl(b)-tradePnl(a)).map(t => {
+                      {[...closedTrades].sort((a, b) => tradePnl(b) - tradePnl(a)).map(t => {
                         const p = tradePnl(t);
-                        const maxAbs = Math.max(...closedTrades.map(x=>Math.abs(tradePnl(x))));
-                        const barW = maxAbs > 0 ? Math.abs(p)/maxAbs*100 : 0;
+                        const maxAbs = Math.max(...closedTrades.map(x => Math.abs(tradePnl(x))));
+                        const barW = maxAbs > 0 ? Math.abs(p) / maxAbs * 100 : 0;
                         return (
                           <div key={t.id} className="flex items-center gap-2 text-xs">
                             <span className="w-16 text-gray-400 font-mono">{t.ticker}</span>
                             <div className="flex-1 relative h-5 flex items-center">
-                              <div className={`h-4 rounded ${p>=0?"bg-emerald-500/30":"bg-red-500/30"} absolute`}
-                                style={{ width: `${barW}%`, [p>=0?"left":"right"]: "50%", maxWidth: "50%" }} />
-                              <span className={`absolute ${p>=0?"left-[52%]":"right-[52%]"} font-mono font-bold ${p>=0?"text-emerald-400":"text-red-400"}`}>
+                              <div className={`h-4 rounded ${p >= 0 ? "bg-emerald-500/30" : "bg-red-500/30"} absolute`}
+                                style={{ width: `${barW}%`, [p >= 0 ? "left" : "right"]: "50%", maxWidth: "50%" }} />
+                              <span className={`absolute ${p >= 0 ? "left-[52%]" : "right-[52%]"} font-mono font-bold ${p >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                                 {fmt(p)}
                               </span>
                             </div>
@@ -445,17 +500,16 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* Summary stats */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {[
-                    { label: "Best Trade",  value: fmt(Math.max(...closedTrades.map(tradePnl))), pos: true },
+                    { label: "Best Trade", value: fmt(Math.max(...closedTrades.map(tradePnl))), pos: true },
                     { label: "Worst Trade", value: fmt(Math.min(...closedTrades.map(tradePnl))), pos: false },
-                    { label: "Avg Win",     value: avgWin > 0 ? fmt(avgWin) : "—", pos: true },
-                    { label: "Avg Loss",    value: avgLoss < 0 ? fmt(avgLoss) : "—", pos: false },
+                    { label: "Avg Win", value: avgWin > 0 ? fmt(avgWin) : "—", pos: true },
+                    { label: "Avg Loss", value: avgLoss < 0 ? fmt(avgLoss) : "—", pos: false },
                   ].map(s => (
                     <div key={s.label} className="rounded-xl p-4 border border-gray-800 bg-gray-900 text-center">
                       <div className="text-xs text-gray-500 mb-1">{s.label}</div>
-                      <div className={`text-lg font-bold font-mono ${s.pos?"text-emerald-400":"text-red-400"}`}>{s.value}</div>
+                      <div className={`text-lg font-bold font-mono ${s.pos ? "text-emerald-400" : "text-red-400"}`}>{s.value}</div>
                     </div>
                   ))}
                 </div>
@@ -467,19 +521,16 @@ export default function Dashboard() {
         {/* ── Lessons Tab ── */}
         {tab === "lessons" && (
           <div className="space-y-4">
-            {/* Category pills */}
             {lessons.length > 0 && (
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs text-gray-500">Filter:</span>
                 {(["all", "critical", "warning", "insight"] as const).map(f => (
                   <button key={f} onClick={() => setLessonFilter(f)}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${lessonFilter===f?"bg-indigo-600 text-white":"bg-gray-800 text-gray-400 hover:text-gray-300"}`}>
+                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${lessonFilter === f ? "bg-indigo-600 text-white" : "bg-gray-800 text-gray-400 hover:text-gray-300"}`}>
                     {f === "all" ? "All" : SEVERITY_CONFIG[f].label}
-                    {f !== "all" && <span className="ml-1.5 opacity-60">{lessons.filter(l=>l.severity===f).length}</span>}
+                    {f !== "all" && <span className="ml-1.5 opacity-60">{lessons.filter(l => l.severity === f).length}</span>}
                   </button>
                 ))}
-
-                {/* Category breakdown mini chart */}
                 <div className="ml-auto flex items-center gap-2">
                   {Object.entries(catCount).map(([cat, cnt]) => (
                     <span key={cat} className="flex items-center gap-1 text-xs text-gray-500">
@@ -498,8 +549,8 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="grid md:grid-cols-2 gap-3">
-                {[...displayLessons].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(l => (
-                  <LessonCard key={l.id} lesson={l} onDelete={id => saveLessons(lessons.filter(x=>x.id!==id))} />
+                {[...displayLessons].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(l => (
+                  <LessonCard key={l.id} lesson={l} onDelete={id => saveLessons(lessons.filter(x => x.id !== id))} />
                 ))}
               </div>
             )}
@@ -507,7 +558,6 @@ export default function Dashboard() {
         )}
       </main>
 
-      {/* ── Trade Form Modal ── */}
       {showTradeForm && (
         <TradeForm
           trades={trades}
@@ -516,7 +566,6 @@ export default function Dashboard() {
         />
       )}
 
-      {/* ── Lesson Form Modal ── */}
       {showLessonForm && (
         <LessonForm
           trades={trades}
@@ -585,20 +634,20 @@ function TradeForm({ trades, onSave, onClose }: {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">Date</label>
-            <input type="date" className={field} value={form.date} onChange={e=>setForm({...form,date:e.target.value})} required />
+            <input type="date" className={field} value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} required />
           </div>
           <div>
             <label className="label">Ticker</label>
-            <input className={field} placeholder="AAPL" value={form.ticker} onChange={e=>setForm({...form,ticker:e.target.value})} required />
+            <input className={field} placeholder="AAPL" value={form.ticker} onChange={e => setForm({ ...form, ticker: e.target.value })} required />
           </div>
         </div>
 
         <div>
           <label className="label">Direction</label>
           <div className="flex gap-2">
-            {(["LONG","SHORT"] as const).map(d => (
-              <button key={d} type="button" onClick={()=>setForm({...form,direction:d})}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${form.direction===d?(d==="LONG"?"bg-emerald-500/20 border border-emerald-500 text-emerald-400":"bg-red-500/20 border border-red-500 text-red-400"):"bg-gray-800 border border-gray-700 text-gray-500"}`}>
+            {(["LONG", "SHORT"] as const).map(d => (
+              <button key={d} type="button" onClick={() => setForm({ ...form, direction: d })}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${form.direction === d ? (d === "LONG" ? "bg-emerald-500/20 border border-emerald-500 text-emerald-400" : "bg-red-500/20 border border-red-500 text-red-400") : "bg-gray-800 border border-gray-700 text-gray-500"}`}>
                 {d === "LONG" ? "▲ LONG" : "▼ SHORT"}
               </button>
             ))}
@@ -608,39 +657,39 @@ function TradeForm({ trades, onSave, onClose }: {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">Entry $</label>
-            <input type="number" step="0.0001" className={field} placeholder="0.00" value={form.entryPrice} onChange={e=>setForm({...form,entryPrice:e.target.value})} required />
+            <input type="number" step="0.0001" className={field} placeholder="0.00" value={form.entryPrice} onChange={e => setForm({ ...form, entryPrice: e.target.value })} required />
           </div>
           <div>
             <label className="label">Exit $</label>
-            <input type="number" step="0.0001" className={field} placeholder="0.00" value={form.exitPrice} onChange={e=>setForm({...form,exitPrice:e.target.value})} />
+            <input type="number" step="0.0001" className={field} placeholder="0.00" value={form.exitPrice} onChange={e => setForm({ ...form, exitPrice: e.target.value })} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">Shares / Qty</label>
-            <input type="number" step="1" className={field} placeholder="100" value={form.shares} onChange={e=>setForm({...form,shares:e.target.value})} required />
+            <input type="number" step="1" className={field} placeholder="100" value={form.shares} onChange={e => setForm({ ...form, shares: e.target.value })} required />
           </div>
           <div>
             <label className="label">Commission $</label>
-            <input type="number" step="0.01" className={field} placeholder="0.00" value={form.commission} onChange={e=>setForm({...form,commission:e.target.value})} />
+            <input type="number" step="0.01" className={field} placeholder="0.00" value={form.commission} onChange={e => setForm({ ...form, commission: e.target.value })} />
           </div>
         </div>
 
         {pnlPreview !== null && (
-          <div className={`rounded-lg px-4 py-3 text-center font-mono font-bold text-lg ${pnlPreview>=0?"bg-emerald-500/10 text-emerald-400 border border-emerald-500/30":"bg-red-500/10 text-red-400 border border-red-500/30"}`}>
-            {pnlPreview>=0?"▲":"▼"} {fmt(pnlPreview)}
+          <div className={`rounded-lg px-4 py-3 text-center font-mono font-bold text-lg ${pnlPreview >= 0 ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" : "bg-red-500/10 text-red-400 border border-red-500/30"}`}>
+            {pnlPreview >= 0 ? "▲" : "▼"} {fmt(pnlPreview)}
           </div>
         )}
 
         <div>
           <label className="label">Setup / Strategy</label>
-          <input className={field} placeholder="e.g. Breakout, VWAP bounce, Gap and go…" value={form.setup} onChange={e=>setForm({...form,setup:e.target.value})} />
+          <input className={field} placeholder="e.g. Breakout, VWAP bounce, Gap and go…" value={form.setup} onChange={e => setForm({ ...form, setup: e.target.value })} />
         </div>
 
         <div>
           <label className="label">Notes</label>
           <textarea rows={2} className={field + " resize-none"} placeholder="What happened? Emotions, execution notes…"
-            value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} />
+            value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
         </div>
 
         <div className="flex gap-3 pt-1">
@@ -684,7 +733,7 @@ function LessonForm({ trades, onSave, onClose }: {
     });
   };
 
-  const categories: LessonCategory[] = ["Risk Management","Entry","Exit","Psychology","Setup","Other"];
+  const categories: LessonCategory[] = ["Risk Management", "Entry", "Exit", "Psychology", "Setup", "Other"];
 
   return (
     <Modal title="Add Lesson Learned" onClose={onClose}>
@@ -692,13 +741,13 @@ function LessonForm({ trades, onSave, onClose }: {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">Date</label>
-            <input type="date" className={field} value={form.date} onChange={e=>setForm({...form,date:e.target.value})} />
+            <input type="date" className={field} value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
           </div>
           <div>
             <label className="label">Linked Trade</label>
-            <select className={field} value={form.tradeId} onChange={e=>setForm({...form,tradeId:e.target.value})}>
+            <select className={field} value={form.tradeId} onChange={e => setForm({ ...form, tradeId: e.target.value })}>
               <option value="">None</option>
-              {trades.map(t=><option key={t.id} value={t.id}>{t.ticker} — {format(parseISO(t.date),"MMM d")}</option>)}
+              {trades.map(t => <option key={t.id} value={t.id}>{t.ticker} — {format(parseISO(t.date), "MMM d")}</option>)}
             </select>
           </div>
         </div>
@@ -706,13 +755,13 @@ function LessonForm({ trades, onSave, onClose }: {
         <div>
           <label className="label">Type</label>
           <div className="flex gap-2">
-            {(["critical","warning","insight"] as LessonSeverity[]).map(s => {
+            {(["critical", "warning", "insight"] as LessonSeverity[]).map(s => {
               const cfg = SEVERITY_CONFIG[s];
               return (
-                <button key={s} type="button" onClick={()=>setForm({...form,severity:s})}
-                  className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors border ${form.severity===s?cfg.bg:"bg-gray-800 border-gray-700 text-gray-500"}`}>
-                  <span className={form.severity===s?cfg.color:""}>{cfg.icon}</span>
-                  <span className={form.severity===s?cfg.color:""}>{cfg.label}</span>
+                <button key={s} type="button" onClick={() => setForm({ ...form, severity: s })}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors border ${form.severity === s ? cfg.bg : "bg-gray-800 border-gray-700 text-gray-500"}`}>
+                  <span className={form.severity === s ? cfg.color : ""}>{cfg.icon}</span>
+                  <span className={form.severity === s ? cfg.color : ""}>{cfg.label}</span>
                 </button>
               );
             })}
@@ -722,10 +771,10 @@ function LessonForm({ trades, onSave, onClose }: {
         <div>
           <label className="label">Category</label>
           <div className="flex flex-wrap gap-2">
-            {categories.map(c=>(
-              <button key={c} type="button" onClick={()=>setForm({...form,category:c})}
-                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${form.category===c?"text-white":"bg-gray-800 text-gray-500 hover:text-gray-300"}`}
-                style={form.category===c?{background:CATEGORY_COLORS[c]}:{}}>
+            {categories.map(c => (
+              <button key={c} type="button" onClick={() => setForm({ ...form, category: c })}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${form.category === c ? "text-white" : "bg-gray-800 text-gray-500 hover:text-gray-300"}`}
+                style={form.category === c ? { background: CATEGORY_COLORS[c] } : {}}>
                 {c}
               </button>
             ))}
@@ -734,13 +783,13 @@ function LessonForm({ trades, onSave, onClose }: {
 
         <div>
           <label className="label">Title</label>
-          <input className={field} placeholder="e.g. Chased entry after missing the breakout" value={form.title} onChange={e=>setForm({...form,title:e.target.value})} required />
+          <input className={field} placeholder="e.g. Chased entry after missing the breakout" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} required />
         </div>
 
         <div>
           <label className="label">Details</label>
-          <textarea rows={3} className={field+" resize-none"} placeholder="What happened, what should you do differently…"
-            value={form.description} onChange={e=>setForm({...form,description:e.target.value})} />
+          <textarea rows={3} className={field + " resize-none"} placeholder="What happened, what should you do differently…"
+            value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
         </div>
 
         <div className="flex gap-3 pt-1">
