@@ -299,9 +299,9 @@ function PeriodDropdown({ period, onChange }: { period: Period; onChange: (p: Pe
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1 text-xs font-semibold text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 px-2 py-1 rounded-md transition-colors">
-        <Calendar size={11}/> {PERIOD_LABELS[period]}
-        <ChevronDown size={11} className={`transition-transform ${open?"rotate-180":""}`}/>
+        className="flex items-center gap-1.5 text-sm font-bold text-indigo-300 hover:text-white bg-indigo-500/20 hover:bg-indigo-500/35 border border-indigo-500/40 hover:border-indigo-400/60 px-3 py-1.5 rounded-lg transition-all">
+        <Calendar size={13}/> {PERIOD_LABELS[period]}
+        <ChevronDown size={13} className={`transition-transform ${open?"rotate-180":""}`}/>
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1.5 z-50 min-w-[150px] rounded-xl border border-gray-700 bg-gray-900 shadow-2xl overflow-hidden">
@@ -756,8 +756,19 @@ export default function Dashboard() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#1f2937"/>
                 <XAxis dataKey="date" tick={{fill:"#6b7280",fontSize:11}} axisLine={false} tickLine={false}/>
                 <YAxis tick={{fill:"#6b7280",fontSize:11}} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}`}/>
-                <Tooltip contentStyle={{background:"#111827",border:"1px solid #374151",borderRadius:8,color:"#f9fafb",fontSize:12}}
-                  formatter={(v:number) => [fmt(v),"P&L"]}/>
+                <Tooltip
+                  cursor={{ fill: "rgba(255,255,255,0.04)", radius: 4 }}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    const val = payload[0].value as number;
+                    return (
+                      <div className="rounded-xl border border-gray-700 bg-gray-900/95 px-4 py-3 shadow-2xl">
+                        <div className={`text-xl font-bold font-mono ${val>=0?"text-emerald-400":"text-red-400"}`}>{fmt(val)}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{label}</div>
+                      </div>
+                    );
+                  }}
+                />
                 <Bar dataKey="pnl" radius={[4,4,0,0]}>
                   {chartData.map((e,i) => <Cell key={i} fill={e.pnl>=0?"#10b981":"#ef4444"} fillOpacity={0.85}/>)}
                 </Bar>
