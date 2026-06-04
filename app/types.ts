@@ -17,6 +17,8 @@ export interface Trade {
   notes: string;
   setup: string;
   createdAt: string;
+  entryTime?: string; // "HH:mm" 24-hour
+  exitTime?: string;  // "HH:mm" 24-hour
 }
 
 export interface Lesson {

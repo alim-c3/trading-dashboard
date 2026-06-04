@@ -37,6 +37,18 @@ function tradePnl(t: Trade): number {
   return (t.direction === "SHORT" ? -raw : raw) - (t.commission ?? 0);
 }
 
+function tradeDuration(t: Trade): string | null {
+  if (!t.entryTime || !t.exitTime) return null;
+  const [eh, em] = t.entryTime.split(":").map(Number);
+  const [xh, xm] = t.exitTime.split(":").map(Number);
+  const mins = (xh * 60 + xm) - (eh * 60 + em);
+  if (mins <= 0) return null;
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PERIOD
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -226,9 +238,10 @@ export function importSchwebCSV(text: string): { trades: Trade[]; errors: string
 }
 
 export function exportToCSV(trades: Trade[]) {
-  const headers = ["Date","Ticker","Direction","Entry","Exit","Shares","Commission","P&L","Setup","Notes","Status"];
+  const headers = ["Date","EntryTime","ExitTime","Duration","Ticker","Direction","Entry","Exit","Shares","Commission","P&L","Setup","Notes","Status"];
   const rows = trades.map(t => [
-    t.date, t.ticker, t.direction,
+    t.date, t.entryTime ?? "", t.exitTime ?? "", tradeDuration(t) ?? "",
+    t.ticker, t.direction,
     t.entryPrice, t.exitPrice ?? "",
     t.shares, t.commission,
     t.status === "CLOSED" ? tradePnl(t).toFixed(2) : "",
@@ -247,9 +260,9 @@ export function exportToCSV(trades: Trade[]) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const SEED_TRADES: Trade[] = [
-  { id:"seed-1", date:"2026-06-04", ticker:"BB", direction:"LONG", entryPrice:9.95, exitPrice:10.076, shares:3000, commission:1.21, status:"CLOSED", setup:"Momentum", notes:"Bought 3000 shares, sold into strength", createdAt:"2026-06-04T10:00:00Z" },
-  { id:"seed-2", date:"2026-06-04", ticker:"BB", direction:"LONG", entryPrice:9.01, exitPrice:9.64, shares:2500, commission:0.99, status:"CLOSED", setup:"Pullback re-entry", notes:"Second BB trade on same day, bought dip", createdAt:"2026-06-04T11:00:00Z" },
-  { id:"seed-3", date:"2026-06-02", ticker:"HPE", direction:"SHORT", entryPrice:59.9205, exitPrice:56.0925, shares:300, commission:0.43, status:"CLOSED", setup:"Short sell", notes:"Sold short 300 @ 59.9205, covered: 150 @ 55.605 + 150 @ 56.58 (blended exit $56.0925)", createdAt:"2026-06-02T10:00:00Z" },
+  { id:"seed-1", date:"2026-06-04", ticker:"BB", direction:"LONG", entryPrice:9.95, exitPrice:10.076, shares:3000, commission:1.21, status:"CLOSED", setup:"Momentum", notes:"Bought 3000 shares, sold into strength", createdAt:"2026-06-04T10:00:00Z", entryTime:"09:35", exitTime:"10:12" },
+  { id:"seed-2", date:"2026-06-04", ticker:"BB", direction:"LONG", entryPrice:9.01, exitPrice:9.64, shares:2500, commission:0.99, status:"CLOSED", setup:"Pullback re-entry", notes:"Second BB trade on same day, bought dip", createdAt:"2026-06-04T11:00:00Z", entryTime:"10:28", exitTime:"11:43" },
+  { id:"seed-3", date:"2026-06-02", ticker:"HPE", direction:"SHORT", entryPrice:59.9205, exitPrice:56.0925, shares:300, commission:0.43, status:"CLOSED", setup:"Short sell", notes:"Sold short 300 @ 59.9205, covered: 150 @ 55.605 + 150 @ 56.58 (blended exit $56.0925)", createdAt:"2026-06-02T10:00:00Z", entryTime:"09:32", exitTime:"11:28" },
 ];
 
 const SEVERITY_CONFIG: Record<LessonSeverity, { color: string; bg: string; icon: JSX.Element; label: string }> = {
@@ -343,7 +356,7 @@ function TradeRow({ trade, onDelete, onEdit }: {
   return (
     <>
       {/* Desktop */}
-      <div className="hidden md:grid grid-cols-[80px_80px_60px_90px_90px_75px_1fr_60px] gap-2 items-center px-4 py-3 rounded-lg border border-gray-800 bg-gray-900/60 hover:bg-gray-900 transition-colors text-sm">
+      <div className="hidden md:grid grid-cols-[80px_80px_60px_90px_90px_75px_65px_1fr_60px] gap-2 items-center px-4 py-3 rounded-lg border border-gray-800 bg-gray-900/60 hover:bg-gray-900 transition-colors text-sm">
         <span className="text-gray-400 text-xs">{format(parseISO(trade.date),"MMM d")}</span>
         <span className="font-bold text-white tracking-wide">{trade.ticker}</span>
         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full w-fit ${trade.direction==="LONG" ? "bg-emerald-400/10 text-emerald-400" : "bg-red-400/10 text-red-400"}`}>
@@ -352,6 +365,7 @@ function TradeRow({ trade, onDelete, onEdit }: {
         <span className="font-mono text-gray-300">${trade.entryPrice.toFixed(2)}</span>
         <span className="font-mono text-gray-300">{trade.exitPrice ? `$${trade.exitPrice.toFixed(2)}` : <span className="text-yellow-400 text-xs">OPEN</span>}</span>
         <span className="font-mono text-gray-400">{trade.shares.toLocaleString()}</span>
+        <span className="font-mono text-xs text-indigo-300/80">{tradeDuration(trade) ?? <span className="text-gray-700">—</span>}</span>
         <div>
           {trade.exitPrice ? (
             <span className={`font-mono font-bold ${isPos?"text-emerald-400":"text-red-400"}`}>
@@ -382,10 +396,11 @@ function TradeRow({ trade, onDelete, onEdit }: {
             <button onClick={() => onDelete(trade.id)} className="text-gray-600 hover:text-red-400"><Trash2 size={13}/></button>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-2 text-xs">
+        <div className="grid grid-cols-4 gap-2 text-xs">
           <div><span className="text-gray-600">Entry</span><div className="font-mono text-gray-300">${trade.entryPrice.toFixed(2)}</div></div>
           <div><span className="text-gray-600">Exit</span><div className="font-mono text-gray-300">{trade.exitPrice?`$${trade.exitPrice.toFixed(2)}`:<span className="text-yellow-400">OPEN</span>}</div></div>
           <div><span className="text-gray-600">Shares</span><div className="font-mono text-gray-400">{trade.shares.toLocaleString()}</div></div>
+          <div><span className="text-gray-600">Duration</span><div className="font-mono text-indigo-300/80">{tradeDuration(trade) ?? "—"}</div></div>
         </div>
         {trade.exitPrice && (
           <div className={`font-mono font-bold text-sm ${isPos?"text-emerald-400":"text-red-400"}`}>
@@ -785,8 +800,8 @@ export default function Dashboard() {
               </div>
             ) : (
               <>
-                <div className="hidden md:grid grid-cols-[80px_80px_60px_90px_90px_75px_1fr_60px] gap-2 px-4 py-2 text-xs font-semibold tracking-widest uppercase text-gray-600">
-                  <span>Date</span><span>Ticker</span><span>Dir</span><span>Entry</span><span>Exit</span><span>Shares</span><span>P&amp;L</span><span/>
+                <div className="hidden md:grid grid-cols-[80px_80px_60px_90px_90px_75px_65px_1fr_60px] gap-2 px-4 py-2 text-xs font-semibold tracking-widest uppercase text-gray-600">
+                  <span>Date</span><span>Ticker</span><span>Dir</span><span>Entry</span><span>Exit</span><span>Shares</span><span>Duration</span><span>P&amp;L</span><span/>
                 </div>
                 <div className="space-y-2">
                   {displayTrades.map(t => (
@@ -1026,6 +1041,8 @@ function TradeForm({ trade, onSave, onClose }: {
     commission:  trade?.commission?.toString()  ?? "",
     setup:       trade?.setup       ?? "",
     notes:       trade?.notes       ?? "",
+    entryTime:   trade?.entryTime   ?? "",
+    exitTime:    trade?.exitTime    ?? "",
   });
 
   const pnlPreview = (() => {
@@ -1050,6 +1067,8 @@ function TradeForm({ trade, onSave, onClose }: {
       setup:      form.setup,
       notes:      form.notes,
       createdAt:  trade?.createdAt ?? new Date().toISOString(),
+      entryTime:  form.entryTime || undefined,
+      exitTime:   form.exitTime  || undefined,
     });
   };
 
@@ -1060,6 +1079,15 @@ function TradeForm({ trade, onSave, onClose }: {
         <div className="grid grid-cols-2 gap-3">
           <div><label className="label">Date</label><input type="date" className={f} value={form.date} onChange={e=>setForm({...form,date:e.target.value})} required/></div>
           <div><label className="label">Ticker</label><input className={f} placeholder="AAPL" value={form.ticker} onChange={e=>setForm({...form,ticker:e.target.value})} required/></div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="label">Entry Time</label><input type="time" className={f} value={form.entryTime} onChange={e=>setForm({...form,entryTime:e.target.value})}/></div>
+          <div>
+            <label className="label">Exit Time
+              {form.entryTime && form.exitTime && (() => { const d = tradeDuration({entryTime:form.entryTime,exitTime:form.exitTime} as Trade); return d ? <span className="ml-2 text-indigo-400 font-mono font-semibold">{d}</span> : null; })()}
+            </label>
+            <input type="time" className={f} value={form.exitTime} onChange={e=>setForm({...form,exitTime:e.target.value})}/>
+          </div>
         </div>
         <div>
           <label className="label">Direction</label>
